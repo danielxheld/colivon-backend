@@ -22,6 +22,7 @@ class ShoppingListItem extends Model
         'is_completed',
         'is_recurring',
         'recurrence_interval',
+        'next_recurrence_date',
         'completed_at',
     ];
 
@@ -29,6 +30,7 @@ class ShoppingListItem extends Model
         'is_completed' => 'boolean',
         'is_recurring' => 'boolean',
         'completed_at' => 'datetime',
+        'next_recurrence_date' => 'date',
         'price' => 'decimal:2',
         'aisle_order' => 'integer',
     ];

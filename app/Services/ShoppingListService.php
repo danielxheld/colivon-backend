@@ -143,10 +143,46 @@ class ShoppingListService
      */
     protected function handleRecurringItem(ShoppingListItem $item): void
     {
-        // Create a new uncompleted copy of the item
-        $newItem = $item->replicate();
-        $newItem->is_completed = false;
-        $newItem->completed_at = null;
-        $newItem->save();
+        // Calculate next recurrence date based on interval
+        $nextDate = $this->calculateNextRecurrenceDate($item->recurrence_interval);
+        $item->next_recurrence_date = $nextDate;
+    }
+
+    /**
+     * Calculate next recurrence date based on interval.
+     */
+    protected function calculateNextRecurrenceDate(string $interval): \Carbon\Carbon
+    {
+        return match ($interval) {
+            'daily' => now()->addDay(),
+            'weekly' => now()->addWeek(),
+            'monthly' => now()->addMonth(),
+            default => now()->addWeek(), // Default to weekly
+        };
+    }
+
+    /**
+     * Reactivate items that are due for recurrence.
+     */
+    public function reactivateRecurringItems(): int
+    {
+        $count = 0;
+
+        $items = ShoppingListItem::where('is_completed', true)
+            ->where('is_recurring', true)
+            ->whereNotNull('next_recurrence_date')
+            ->whereDate('next_recurrence_date', '<=', now())
+            ->get();
+
+        foreach ($items as $item) {
+            $item->update([
+                'is_completed' => false,
+                'completed_at' => null,
+                'next_recurrence_date' => null,
+            ]);
+            $count++;
+        }
+
+        return $count;
     }
 }
