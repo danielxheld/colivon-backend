@@ -17,10 +17,12 @@ class ShoppingList extends Model
         'is_public',
         'store',
         'currently_shopping_by_id',
+        'shopping_started_at',
         'is_template',
         'template_name',
         'estimated_total',
         'actual_total',
+        'shopping_stats',
         'last_sync',
     ];
 
@@ -30,6 +32,8 @@ class ShoppingList extends Model
         'estimated_total' => 'decimal:2',
         'actual_total' => 'decimal:2',
         'last_sync' => 'datetime',
+        'shopping_started_at' => 'datetime',
+        'shopping_stats' => 'array',
     ];
 
     public function household(): BelongsTo

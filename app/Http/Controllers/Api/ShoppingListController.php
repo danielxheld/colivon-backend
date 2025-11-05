@@ -232,4 +232,135 @@ class ShoppingListController extends Controller
             'message' => 'Shopping mode stopped.',
         ]);
     }
+
+    /**
+     * Claim an item (user says "I'll buy this").
+     */
+    public function claimItem(Request $request, ShoppingListItem $item): JsonResponse
+    {
+        $shoppingList = $item->shoppingList;
+
+        abort_unless(
+            $request->user()->households->contains($shoppingList->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        $item = $this->shoppingListService->claimItem($item, $request->user());
+
+        return response()->json([
+            'item' => new ShoppingListItemResource($item),
+            'message' => 'Item claimed successfully.',
+        ]);
+    }
+
+    /**
+     * Unclaim an item.
+     */
+    public function unclaimItem(Request $request, ShoppingListItem $item): JsonResponse
+    {
+        $shoppingList = $item->shoppingList;
+
+        abort_unless(
+            $request->user()->households->contains($shoppingList->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        $item = $this->shoppingListService->unclaimItem($item);
+
+        return response()->json([
+            'item' => new ShoppingListItemResource($item),
+            'message' => 'Item unclaimed successfully.',
+        ]);
+    }
+
+    /**
+     * Mark item as bought with actual price.
+     */
+    public function markAsBought(Request $request, ShoppingListItem $item): JsonResponse
+    {
+        $request->validate([
+            'actual_price' => 'nullable|numeric|min:0',
+        ]);
+
+        $shoppingList = $item->shoppingList;
+
+        abort_unless(
+            $request->user()->households->contains($shoppingList->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        $item = $this->shoppingListService->markAsBought(
+            $item,
+            $request->user(),
+            $request->actual_price
+        );
+
+        return response()->json([
+            'item' => new ShoppingListItemResource($item),
+            'message' => 'Item marked as bought.',
+        ]);
+    }
+
+    /**
+     * Get expense breakdown for a list.
+     */
+    public function getExpenses(Request $request, ShoppingList $shoppingList): JsonResponse
+    {
+        abort_unless(
+            $request->user()->households->contains($shoppingList->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        $completedItems = $shoppingList->items()
+            ->where('is_completed', true)
+            ->with(['boughtBy'])
+            ->get();
+
+        $expenses = [
+            'total_spent' => $completedItems->sum('actual_price'),
+            'total_items' => $completedItems->count(),
+            'by_person' => [],
+            'shared_cost_total' => $completedItems->where('shared_cost', true)->sum('actual_price'),
+            'personal_cost_total' => $completedItems->where('shared_cost', false)->sum('actual_price'),
+        ];
+
+        // Group by buyer
+        $byPerson = $completedItems->groupBy('bought_by_id')->map(function ($items, $userId) {
+            $user = $items->first()->boughtBy;
+            return [
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                ],
+                'total_spent' => $items->sum('actual_price'),
+                'shared_items_total' => $items->where('shared_cost', true)->sum('actual_price'),
+                'personal_items_total' => $items->where('shared_cost', false)->sum('actual_price'),
+                'items_count' => $items->count(),
+            ];
+        })->values();
+
+        $expenses['by_person'] = $byPerson;
+
+        // Calculate what each person owes
+        $memberCount = $shoppingList->household->members->count();
+        $sharedPerPerson = $expenses['shared_cost_total'] / max($memberCount, 1);
+
+        $expenses['split_calculation'] = $byPerson->map(function ($person) use ($sharedPerPerson) {
+            $paidShared = $person['shared_items_total'];
+            $owes = $sharedPerPerson - $paidShared;
+
+            return [
+                'user' => $person['user'],
+                'paid' => $person['total_spent'],
+                'should_pay' => $sharedPerPerson + $person['personal_items_total'],
+                'balance' => $owes * -1, // negative means they're owed money
+            ];
+        });
+
+        return response()->json($expenses);
+    }
 }

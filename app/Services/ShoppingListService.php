@@ -15,7 +15,12 @@ class ShoppingListService
      */
     public function getListsForHousehold(int $householdId): Collection
     {
-        return ShoppingList::with(['user', 'currentlyShoppingBy', 'items'])
+        return ShoppingList::with([
+            'user',
+            'currentlyShoppingBy',
+            'items.claimedBy',
+            'items.boughtBy'
+        ])
             ->where('household_id', $householdId)
             ->latest()
             ->get();
@@ -117,6 +122,7 @@ class ShoppingListService
         DB::transaction(function () use ($shoppingList, $user) {
             $shoppingList->update([
                 'currently_shopping_by_id' => $user->id,
+                'shopping_started_at' => now(),
                 'last_sync' => now(),
             ]);
         });
@@ -125,17 +131,90 @@ class ShoppingListService
     }
 
     /**
-     * Stop shopping mode for a list.
+     * Stop shopping mode for a list and calculate stats.
      */
     public function stopShopping(ShoppingList $shoppingList): ShoppingList
     {
         DB::transaction(function () use ($shoppingList) {
+            // Calculate shopping stats
+            $stats = $this->calculateShoppingStats($shoppingList);
+
             $shoppingList->update([
                 'currently_shopping_by_id' => null,
+                'shopping_started_at' => null,
+                'shopping_stats' => $stats,
+                'actual_total' => $stats['total_spent'] ?? null,
             ]);
         });
 
         return $shoppingList->fresh();
+    }
+
+    /**
+     * Claim an item (user says "I'll buy this").
+     */
+    public function claimItem(ShoppingListItem $item, User $user): ShoppingListItem
+    {
+        $item->update(['claimed_by_id' => $user->id]);
+        return $item->fresh(['claimedBy']);
+    }
+
+    /**
+     * Unclaim an item.
+     */
+    public function unclaimItem(ShoppingListItem $item): ShoppingListItem
+    {
+        $item->update(['claimed_by_id' => null]);
+        return $item->fresh();
+    }
+
+    /**
+     * Mark item as bought with actual price.
+     */
+    public function markAsBought(ShoppingListItem $item, User $user, ?float $actualPrice = null): ShoppingListItem
+    {
+        $item->update([
+            'is_completed' => true,
+            'completed_at' => now(),
+            'bought_by_id' => $user->id,
+            'actual_price' => $actualPrice ?? $item->price,
+        ]);
+
+        // Handle recurring items
+        if ($item->is_recurring && $item->recurrence_interval) {
+            $this->handleRecurringItem($item);
+            $item->save();
+        }
+
+        return $item->fresh(['boughtBy']);
+    }
+
+    /**
+     * Calculate shopping statistics.
+     */
+    protected function calculateShoppingStats(ShoppingList $shoppingList): array
+    {
+        $items = $shoppingList->items()->where('is_completed', true)->get();
+
+        $stats = [
+            'total_items' => $items->count(),
+            'total_spent' => $items->sum('actual_price'),
+            'estimated_total' => $items->sum('price'),
+            'shoppers' => [],
+            'completed_at' => now()->toISOString(),
+        ];
+
+        // Calculate per-shopper stats
+        $shopperStats = $items->groupBy('bought_by_id')->map(function ($userItems) {
+            return [
+                'items_count' => $userItems->count(),
+                'total_spent' => $userItems->sum('actual_price'),
+            ];
+        });
+
+        $stats['shoppers'] = $shopperStats->toArray();
+
+        return $stats;
     }
 
     /**

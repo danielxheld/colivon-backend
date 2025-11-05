@@ -46,6 +46,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/shopping-lists/{shoppingList}/start-shopping', [ShoppingListController::class, 'startShopping']);
     Route::post('/shopping-lists/{shoppingList}/stop-shopping', [ShoppingListController::class, 'stopShopping']);
 
+    // WG Features - Item Claiming
+    Route::post('/shopping-list-items/{item}/claim', [ShoppingListController::class, 'claimItem']);
+    Route::post('/shopping-list-items/{item}/unclaim', [ShoppingListController::class, 'unclaimItem']);
+    Route::post('/shopping-list-items/{item}/mark-bought', [ShoppingListController::class, 'markAsBought']);
+
+    // WG Features - Expenses
+    Route::get('/shopping-lists/{shoppingList}/expenses', [ShoppingListController::class, 'getExpenses']);
+
     // Favorite Items routes
     Route::get('/favorite-items', [FavoriteItemController::class, 'index']);
     Route::post('/favorite-items', [FavoriteItemController::class, 'store']);
