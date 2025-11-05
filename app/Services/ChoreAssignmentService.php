@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Laravel\Facades\Image;
 
 class ChoreAssignmentService
 {
@@ -328,6 +329,17 @@ class ChoreAssignmentService
      */
     public function storePhoto($photo): string
     {
-        return $photo->store('chore-completions', 'public');
+        // Generate unique filename
+        $filename = 'chore-completions/' . uniqid() . '.jpg';
+
+        // Optimize and resize image
+        $image = Image::read($photo)
+            ->scaleDown(width: 1200)  // Max width 1200px
+            ->toJpeg(quality: 85);     // 85% quality
+
+        // Store optimized image
+        Storage::disk('public')->put($filename, (string) $image);
+
+        return $filename;
     }
 }
