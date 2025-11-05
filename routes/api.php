@@ -1,7 +1,10 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ChoreAssignmentController;
+use App\Http\Controllers\Api\ChoreController;
 use App\Http\Controllers\Api\FavoriteItemController;
+use App\Http\Controllers\Api\GamificationController;
 use App\Http\Controllers\Api\HouseholdController;
 use App\Http\Controllers\Api\ShoppingListController;
 use Illuminate\Http\Request;
@@ -46,4 +49,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/favorite-items', [FavoriteItemController::class, 'index']);
     Route::post('/favorite-items', [FavoriteItemController::class, 'store']);
     Route::delete('/favorite-items/{favorite}', [FavoriteItemController::class, 'destroy']);
+
+    // Chore routes
+    Route::get('/chores', [ChoreController::class, 'index']);
+    Route::post('/chores', [ChoreController::class, 'store']);
+    Route::get('/chores/{chore}', [ChoreController::class, 'show']);
+    Route::put('/chores/{chore}', [ChoreController::class, 'update']);
+    Route::delete('/chores/{chore}', [ChoreController::class, 'destroy']);
+
+    // Chore Assignment routes
+    Route::get('/chore-assignments', [ChoreAssignmentController::class, 'index']);
+    Route::get('/chore-assignments/my', [ChoreAssignmentController::class, 'myAssignments']);
+    Route::post('/chores/{chore}/assign', [ChoreAssignmentController::class, 'assign']);
+    Route::post('/chore-assignments/{assignment}/complete', [ChoreAssignmentController::class, 'complete']);
+    Route::post('/chore-assignments/roulette', [ChoreAssignmentController::class, 'runRoulette']);
+    Route::post('/chore-preferences', [ChoreAssignmentController::class, 'updatePreference']);
+
+    // Gamification routes
+    Route::get('/gamification/my-stats', [GamificationController::class, 'myStats']);
+    Route::get('/gamification/leaderboard/monthly', [GamificationController::class, 'monthlyLeaderboard']);
+    Route::get('/gamification/leaderboard/all-time', [GamificationController::class, 'allTimeLeaderboard']);
 });

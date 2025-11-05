@@ -65,4 +65,29 @@ class User extends Authenticatable
     {
         return $this->hasMany(ShoppingList::class);
     }
+
+    public function createdChores(): HasMany
+    {
+        return $this->hasMany(Chore::class, 'created_by');
+    }
+
+    public function choreAssignments(): HasMany
+    {
+        return $this->hasMany(ChoreAssignment::class);
+    }
+
+    public function choreCompletions(): HasMany
+    {
+        return $this->hasMany(ChoreCompletion::class, 'completed_by');
+    }
+
+    public function chorePreferences(): HasMany
+    {
+        return $this->hasMany(UserChorePreference::class);
+    }
+
+    public function gamificationStats(): HasMany
+    {
+        return $this->hasMany(GamificationStat::class);
+    }
 }

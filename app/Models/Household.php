@@ -56,4 +56,14 @@ class Household extends Model
     {
         return $this->hasMany(FavoriteItem::class);
     }
+
+    public function chores(): HasMany
+    {
+        return $this->hasMany(Chore::class);
+    }
+
+    public function gamificationStats(): HasMany
+    {
+        return $this->hasMany(GamificationStat::class);
+    }
 }
