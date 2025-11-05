@@ -3,163 +3,145 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreHouseholdRequest;
+use App\Http\Requests\UpdateHouseholdRequest;
+use App\Http\Requests\JoinHouseholdRequest;
+use App\Http\Resources\HouseholdResource;
 use App\Models\Household;
+use App\Services\HouseholdService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class HouseholdController extends Controller
 {
-    public function index(Request $request)
+    public function __construct(
+        protected HouseholdService $householdService
+    ) {
+        $this->authorizeResource(Household::class);
+    }
+
+    /**
+     * Get all households for the authenticated user.
+     */
+    public function index(Request $request): AnonymousResourceCollection
     {
-        $households = $request->user()->households()->with('owner', 'members')->get();
+        $households = $this->householdService->getHouseholdsForUser($request->user());
+
+        return HouseholdResource::collection($households);
+    }
+
+    /**
+     * Create a new household.
+     */
+    public function store(StoreHouseholdRequest $request): JsonResponse
+    {
+        $household = $this->householdService->createHousehold(
+            $request->validated(),
+            $request->user()
+        );
 
         return response()->json([
-            'households' => $households,
-        ]);
+            'household' => new HouseholdResource($household),
+            'message' => 'Household created successfully.',
+        ], 201);
     }
 
-    public function store(Request $request)
+    /**
+     * Get a single household.
+     */
+    public function show(Household $household): HouseholdResource
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-        ]);
-
-        DB::beginTransaction();
-
-        try {
-            $household = Household::create([
-                'name' => $request->name,
-                'description' => $request->description,
-                'owner_id' => $request->user()->id,
-            ]);
-
-            // Add creator as owner
-            $household->users()->attach($request->user()->id, ['role' => 'owner']);
-
-            DB::commit();
-
-            return response()->json([
-                'household' => $household->load('owner', 'members'),
-                'message' => 'Household created successfully',
-            ], 201);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Failed to create household',
-                'error' => $e->getMessage(),
-            ], 500);
-        }
+        return new HouseholdResource($household->load(['owner', 'users']));
     }
 
-    public function show(Request $request, Household $household)
+    /**
+     * Update a household.
+     */
+    public function update(UpdateHouseholdRequest $request, Household $household): JsonResponse
     {
-        // Check if user is member of household
-        if (!$request->user()->households->contains($household->id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
+        $household = $this->householdService->updateHousehold(
+            $household,
+            $request->validated()
+        );
 
         return response()->json([
-            'household' => $household->load('owner', 'members'),
+            'household' => new HouseholdResource($household),
+            'message' => 'Household updated successfully.',
         ]);
     }
 
-    public function update(Request $request, Household $household)
+    /**
+     * Delete a household.
+     */
+    public function destroy(Household $household): JsonResponse
     {
-        // Check if user is owner or admin
-        $userRole = $household->users()
-            ->where('user_id', $request->user()->id)
-            ->first()?->pivot->role;
+        // Check if user is owner
+        abort_unless(
+            $household->owner_id === auth()->id(),
+            403,
+            'Only the owner can delete the household.'
+        );
 
-        if (!in_array($userRole, ['owner', 'admin'])) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
-
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-        ]);
-
-        $household->update([
-            'name' => $request->name,
-            'description' => $request->description,
-        ]);
+        $this->householdService->deleteHousehold($household);
 
         return response()->json([
-            'household' => $household->load('owner', 'members'),
-            'message' => 'Household updated successfully',
+            'message' => 'Household deleted successfully.',
         ]);
     }
 
-    public function destroy(Request $request, Household $household)
+    /**
+     * Join a household by invite code.
+     */
+    public function join(JoinHouseholdRequest $request): JsonResponse
     {
-        // Only owner can delete
-        if ($household->owner_id !== $request->user()->id) {
-            return response()->json([
-                'message' => 'Only the owner can delete the household',
-            ], 403);
-        }
+        $user = $request->user();
 
-        $household->delete();
-
-        return response()->json([
-            'message' => 'Household deleted successfully',
-        ]);
-    }
-
-    public function join(Request $request)
-    {
-        $request->validate([
-            'invite_code' => 'required|string',
-        ]);
-
+        // Check if already a member
         $household = Household::where('invite_code', $request->invite_code)->first();
 
-        if (!$household) {
+        if ($user->households->contains($household->id)) {
             return response()->json([
-                'message' => 'Invalid invite code',
-            ], 404);
-        }
-
-        // Check if user is already a member
-        if ($request->user()->households->contains($household->id)) {
-            return response()->json([
-                'message' => 'You are already a member of this household',
+                'message' => 'You are already a member of this household.',
             ], 400);
         }
 
-        $household->users()->attach($request->user()->id, ['role' => 'member']);
+        $household = $this->householdService->joinHouseholdByCode(
+            $request->invite_code,
+            $user
+        );
 
         return response()->json([
-            'household' => $household->load('owner', 'members'),
-            'message' => 'Successfully joined household',
+            'household' => new HouseholdResource($household),
+            'message' => 'Successfully joined household.',
         ]);
     }
 
-    public function leave(Request $request, Household $household)
+    /**
+     * Leave a household.
+     */
+    public function leave(Request $request, Household $household): JsonResponse
     {
+        $user = $request->user();
+
         // Check if user is member
-        if (!$request->user()->households->contains($household->id)) {
-            return response()->json([
-                'message' => 'You are not a member of this household',
-            ], 400);
-        }
+        abort_unless(
+            $user->households->contains($household->id),
+            400,
+            'You are not a member of this household.'
+        );
 
-        // Owner cannot leave their own household
-        if ($household->owner_id === $request->user()->id) {
-            return response()->json([
-                'message' => 'Owner cannot leave the household. Transfer ownership or delete the household instead.',
-            ], 400);
-        }
+        // Owner cannot leave
+        abort_if(
+            $household->owner_id === $user->id,
+            400,
+            'Owner cannot leave the household. Transfer ownership or delete the household instead.'
+        );
 
-        $household->users()->detach($request->user()->id);
+        $this->householdService->leaveHousehold($household, $user);
 
         return response()->json([
-            'message' => 'Successfully left household',
+            'message' => 'Successfully left household.',
         ]);
     }
 }

@@ -3,343 +3,197 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreShoppingListRequest;
+use App\Http\Requests\UpdateShoppingListRequest;
+use App\Http\Requests\StoreShoppingListItemRequest;
+use App\Http\Requests\UpdateShoppingListItemRequest;
+use App\Http\Resources\ShoppingListResource;
+use App\Http\Resources\ShoppingListItemResource;
 use App\Models\ShoppingList;
 use App\Models\ShoppingListItem;
+use App\Services\ShoppingListService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class ShoppingListController extends Controller
 {
-    public function index(Request $request)
+    public function __construct(
+        protected ShoppingListService $shoppingListService
+    ) {
+        $this->authorizeResource(ShoppingList::class);
+    }
+
+    /**
+     * Get all shopping lists for a household.
+     */
+    public function index(Request $request): AnonymousResourceCollection
     {
         $request->validate([
             'household_id' => 'required|exists:households,id',
         ]);
 
-        $householdId = $request->household_id;
+        // Verify user is member of household
+        abort_unless(
+            $request->user()->households->contains($request->household_id),
+            403,
+            'You are not a member of this household.'
+        );
 
-        // Check if user is member of household
-        if (!$request->user()->households->contains($householdId)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
+        $lists = $this->shoppingListService->getListsForHousehold($request->household_id);
 
-        // Get public lists + user's private lists
-        $lists = ShoppingList::where('household_id', $householdId)
-            ->where(function ($query) use ($request) {
-                $query->where('is_public', true)
-                    ->orWhere('user_id', $request->user()->id);
-            })
-            ->with(['items' => function ($query) {
-                $query->orderBy('is_completed')->orderBy('created_at', 'desc');
-            }, 'user'])
-            ->orderBy('created_at', 'desc')
-            ->get();
+        // Filter to only show public lists + user's private lists
+        $lists = $lists->filter(function ($list) use ($request) {
+            return $list->is_public || $list->user_id === $request->user()->id;
+        });
 
-        return response()->json([
-            'shopping_lists' => $lists,
-        ]);
+        return ShoppingListResource::collection($lists);
     }
 
-    public function store(Request $request)
+    /**
+     * Create a new shopping list.
+     */
+    public function store(StoreShoppingListRequest $request): JsonResponse
     {
-        $request->validate([
-            'household_id' => 'required|exists:households,id',
-            'name' => 'required|string|max:255',
-            'is_public' => 'boolean',
-        ]);
-
-        // Check if user is member of household
-        if (!$request->user()->households->contains($request->household_id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
-
-        $list = ShoppingList::create([
-            'household_id' => $request->household_id,
-            'user_id' => $request->user()->id,
-            'name' => $request->name,
-            'is_public' => $request->is_public ?? true,
-        ]);
+        $list = $this->shoppingListService->createList(
+            $request->validated(),
+            $request->user()
+        );
 
         return response()->json([
-            'shopping_list' => $list->load('items', 'user'),
-            'message' => 'Shopping list created successfully',
+            'shopping_list' => new ShoppingListResource($list->load(['items', 'user'])),
+            'message' => 'Shopping list created successfully.',
         ], 201);
     }
 
-    public function show(Request $request, ShoppingList $shoppingList)
+    /**
+     * Get a single shopping list.
+     */
+    public function show(ShoppingList $shoppingList): ShoppingListResource
     {
-        // Check if user can access this list
-        if (!$request->user()->households->contains($shoppingList->household_id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
+        return new ShoppingListResource(
+            $shoppingList->load(['items', 'user', 'currentlyShoppingBy'])
+        );
+    }
 
-        // Check if list is private and user is not owner
-        if (!$shoppingList->is_public && $shoppingList->user_id !== $request->user()->id) {
-            return response()->json([
-                'message' => 'This list is private',
-            ], 403);
-        }
+    /**
+     * Update a shopping list.
+     */
+    public function update(UpdateShoppingListRequest $request, ShoppingList $shoppingList): JsonResponse
+    {
+        $list = $this->shoppingListService->updateList(
+            $shoppingList,
+            $request->validated()
+        );
 
         return response()->json([
-            'shopping_list' => $shoppingList->load(['items' => function ($query) {
-                $query->orderBy('is_completed')->orderBy('created_at', 'desc');
-            }, 'user']),
+            'shopping_list' => new ShoppingListResource($list),
+            'message' => 'Shopping list updated successfully.',
         ]);
     }
 
-    public function update(Request $request, ShoppingList $shoppingList)
+    /**
+     * Delete a shopping list.
+     */
+    public function destroy(ShoppingList $shoppingList): JsonResponse
     {
-        // Only owner can update
-        if ($shoppingList->user_id !== $request->user()->id) {
-            return response()->json([
-                'message' => 'Only the owner can update this list',
-            ], 403);
-        }
-
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'is_public' => 'boolean',
-            'store' => 'nullable|string|max:100',
-            'is_template' => 'boolean',
-            'template_name' => 'nullable|string|max:255',
-            'estimated_total' => 'nullable|numeric|min:0',
-            'actual_total' => 'nullable|numeric|min:0',
-        ]);
-
-        $shoppingList->update($request->only(['name', 'is_public', 'store', 'is_template', 'template_name', 'estimated_total', 'actual_total']));
+        $this->shoppingListService->deleteList($shoppingList);
 
         return response()->json([
-            'shopping_list' => $shoppingList->load('items', 'user'),
-            'message' => 'Shopping list updated successfully',
+            'message' => 'Shopping list deleted successfully.',
         ]);
     }
 
-    public function destroy(Request $request, ShoppingList $shoppingList)
+    /**
+     * Add an item to a shopping list.
+     */
+    public function addItem(StoreShoppingListItemRequest $request, ShoppingList $shoppingList): JsonResponse
     {
-        // Only owner can delete
-        if ($shoppingList->user_id !== $request->user()->id) {
-            return response()->json([
-                'message' => 'Only the owner can delete this list',
-            ], 403);
-        }
-
-        $shoppingList->delete();
+        $item = $this->shoppingListService->addItem(
+            $shoppingList,
+            $request->validated()
+        );
 
         return response()->json([
-            'message' => 'Shopping list deleted successfully',
-        ]);
-    }
-
-    // Item methods
-    public function addItem(Request $request, ShoppingList $shoppingList)
-    {
-        // Check if user can access this list
-        if (!$request->user()->households->contains($shoppingList->household_id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
-
-        if (!$shoppingList->is_public && $shoppingList->user_id !== $request->user()->id) {
-            return response()->json([
-                'message' => 'Cannot add items to private list',
-            ], 403);
-        }
-
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'quantity' => 'nullable|string|max:50',
-            'unit' => 'nullable|string|max:50',
-            'category' => 'nullable|string|max:100',
-            'note' => 'nullable|string',
-            'price' => 'nullable|numeric|min:0',
-            'aisle_order' => 'nullable|integer|min:0',
-            'is_recurring' => 'boolean',
-            'recurrence_interval' => 'nullable|in:daily,weekly,monthly',
-        ]);
-
-        $item = $shoppingList->items()->create([
-            'name' => $request->name,
-            'quantity' => $request->quantity,
-            'unit' => $request->unit,
-            'category' => $request->category,
-            'note' => $request->note,
-            'price' => $request->price,
-            'aisle_order' => $request->aisle_order,
-            'is_recurring' => $request->is_recurring ?? false,
-            'recurrence_interval' => $request->recurrence_interval,
-        ]);
-
-        return response()->json([
-            'item' => $item,
-            'message' => 'Item added successfully',
+            'item' => new ShoppingListItemResource($item),
+            'message' => 'Item added successfully.',
         ], 201);
     }
 
-    public function updateItem(Request $request, ShoppingListItem $item)
+    /**
+     * Update a shopping list item.
+     */
+    public function updateItem(UpdateShoppingListItemRequest $request, ShoppingListItem $item): JsonResponse
     {
-        $shoppingList = $item->shoppingList;
+        $this->authorize('update', $item);
 
-        // Check if user can access this list
-        if (!$request->user()->households->contains($shoppingList->household_id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
-
-        if (!$shoppingList->is_public && $shoppingList->user_id !== $request->user()->id) {
-            return response()->json([
-                'message' => 'Cannot update items in private list',
-            ], 403);
-        }
-
-        $request->validate([
-            'name' => 'string|max:255',
-            'quantity' => 'nullable|string|max:50',
-            'unit' => 'nullable|string|max:50',
-            'category' => 'nullable|string|max:100',
-            'note' => 'nullable|string',
-            'price' => 'nullable|numeric|min:0',
-            'aisle_order' => 'nullable|integer|min:0',
-            'is_recurring' => 'boolean',
-            'recurrence_interval' => 'nullable|in:daily,weekly,monthly',
-        ]);
-
-        $item->update($request->only(['name', 'quantity', 'unit', 'category', 'note', 'price', 'aisle_order', 'is_recurring', 'recurrence_interval']));
+        $item = $this->shoppingListService->updateItem(
+            $item,
+            $request->validated()
+        );
 
         return response()->json([
-            'item' => $item,
-            'message' => 'Item updated successfully',
+            'item' => new ShoppingListItemResource($item),
+            'message' => 'Item updated successfully.',
         ]);
     }
 
-    public function toggleItemComplete(Request $request, ShoppingListItem $item)
+    /**
+     * Toggle item completion status.
+     */
+    public function toggleItemComplete(Request $request, ShoppingListItem $item): JsonResponse
     {
-        $shoppingList = $item->shoppingList;
+        $this->authorize('toggleComplete', $item);
 
-        // Check if user can access this list
-        if (!$request->user()->households->contains($shoppingList->household_id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
-
-        if (!$shoppingList->is_public && $shoppingList->user_id !== $request->user()->id) {
-            return response()->json([
-                'message' => 'Cannot update items in private list',
-            ], 403);
-        }
-
-        DB::beginTransaction();
-
-        try {
-            if ($item->is_completed) {
-                // Uncomplete the item
-                $item->update([
-                    'is_completed' => false,
-                    'completed_at' => null,
-                ]);
-            } else {
-                // Complete the item
-                $item->update([
-                    'is_completed' => true,
-                    'completed_at' => now(),
-                ]);
-
-                // If recurring, create new item
-                if ($item->is_recurring) {
-                    $shoppingList->items()->create([
-                        'name' => $item->name,
-                        'quantity' => $item->quantity,
-                        'unit' => $item->unit,
-                        'is_recurring' => true,
-                        'recurrence_interval' => $item->recurrence_interval,
-                    ]);
-                }
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'item' => $item->fresh(),
-                'message' => 'Item status updated',
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Failed to update item',
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    public function startShopping(Request $request, ShoppingList $shoppingList)
-    {
-        // Check if user can access this list
-        if (!$request->user()->households->contains($shoppingList->household_id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
-
-        $shoppingList->update([
-            'currently_shopping_by_id' => $request->user()->id,
-            'last_sync' => now(),
-        ]);
+        $item = $this->shoppingListService->toggleItemComplete($item);
 
         return response()->json([
-            'shopping_list' => $shoppingList->load('currentlyShoppingBy'),
-            'message' => 'Shopping started',
+            'item' => new ShoppingListItemResource($item),
+            'message' => 'Item status updated.',
         ]);
     }
 
-    public function stopShopping(Request $request, ShoppingList $shoppingList)
+    /**
+     * Delete a shopping list item.
+     */
+    public function deleteItem(Request $request, ShoppingListItem $item): JsonResponse
     {
-        // Check if user can access this list
-        if (!$request->user()->households->contains($shoppingList->household_id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
+        $this->authorize('delete', $item);
 
-        $shoppingList->update([
-            'currently_shopping_by_id' => null,
-            'last_sync' => now(),
-        ]);
+        $this->shoppingListService->deleteItem($item);
 
         return response()->json([
-            'shopping_list' => $shoppingList,
-            'message' => 'Shopping stopped',
+            'message' => 'Item deleted successfully.',
         ]);
     }
 
-    public function deleteItem(Request $request, ShoppingListItem $item)
+    /**
+     * Start shopping mode.
+     */
+    public function startShopping(Request $request, ShoppingList $shoppingList): JsonResponse
     {
-        $shoppingList = $item->shoppingList;
+        $this->authorize('startShopping', $shoppingList);
 
-        // Check if user can access this list
-        if (!$request->user()->households->contains($shoppingList->household_id)) {
-            return response()->json([
-                'message' => 'Unauthorized',
-            ], 403);
-        }
-
-        if (!$shoppingList->is_public && $shoppingList->user_id !== $request->user()->id) {
-            return response()->json([
-                'message' => 'Cannot delete items from private list',
-            ], 403);
-        }
-
-        $item->delete();
+        $list = $this->shoppingListService->startShopping($shoppingList, $request->user());
 
         return response()->json([
-            'message' => 'Item deleted successfully',
+            'shopping_list' => new ShoppingListResource($list),
+            'message' => 'Shopping mode started.',
+        ]);
+    }
+
+    /**
+     * Stop shopping mode.
+     */
+    public function stopShopping(Request $request, ShoppingList $shoppingList): JsonResponse
+    {
+        $this->authorize('startShopping', $shoppingList);
+
+        $list = $this->shoppingListService->stopShopping($shoppingList);
+
+        return response()->json([
+            'shopping_list' => new ShoppingListResource($list),
+            'message' => 'Shopping mode stopped.',
         ]);
     }
 }

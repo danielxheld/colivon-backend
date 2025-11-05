@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 class Household extends Model
@@ -42,5 +43,15 @@ class Household extends Model
     public function members(): BelongsToMany
     {
         return $this->users();
+    }
+
+    public function shoppingLists(): HasMany
+    {
+        return $this->hasMany(ShoppingList::class);
+    }
+
+    public function favoriteItems(): HasMany
+    {
+        return $this->hasMany(FavoriteItem::class);
     }
 }

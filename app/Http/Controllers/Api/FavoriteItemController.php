@@ -3,59 +3,76 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreFavoriteItemRequest;
+use App\Http\Resources\FavoriteItemResource;
 use App\Models\FavoriteItem;
+use App\Services\FavoriteItemService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class FavoriteItemController extends Controller
 {
-    public function index(Request $request)
-    {
-        $householdId = $request->query('household_id');
-
-        $favorites = FavoriteItem::where('household_id', $householdId)
-            ->orderBy('usage_count', 'desc')
-            ->limit(10)
-            ->get();
-
-        return response()->json([
-            'favorites' => $favorites,
-        ]);
+    public function __construct(
+        protected FavoriteItemService $favoriteItemService
+    ) {
     }
 
-    public function store(Request $request)
+    /**
+     * Get favorite items for a household.
+     */
+    public function index(Request $request): AnonymousResourceCollection
     {
-        $validated = $request->validate([
+        $request->validate([
             'household_id' => 'required|exists:households,id',
-            'name' => 'required|string',
-            'category' => 'nullable|string',
-            'quantity' => 'nullable|string',
-            'unit' => 'nullable|string',
         ]);
 
-        // Check if favorite already exists
-        $favorite = FavoriteItem::where('household_id', $validated['household_id'])
-            ->where('name', $validated['name'])
-            ->first();
+        // Verify user is member of household
+        abort_unless(
+            $request->user()->households->contains($request->household_id),
+            403,
+            'You are not a member of this household.'
+        );
 
-        if ($favorite) {
-            // Increment usage count
-            $favorite->increment('usage_count');
-        } else {
-            // Create new favorite
-            $favorite = FavoriteItem::create($validated);
-        }
+        $favorites = $this->favoriteItemService->getFavoritesForHousehold(
+            $request->household_id,
+            $request->query('limit', 10)
+        );
+
+        return FavoriteItemResource::collection($favorites);
+    }
+
+    /**
+     * Add or increment a favorite item.
+     */
+    public function store(StoreFavoriteItemRequest $request): JsonResponse
+    {
+        $favorite = $this->favoriteItemService->addOrIncrementFavorite(
+            $request->validated()
+        );
 
         return response()->json([
-            'favorite' => $favorite,
+            'favorite' => new FavoriteItemResource($favorite),
+            'message' => 'Favorite updated successfully.',
         ], 201);
     }
 
-    public function destroy(FavoriteItem $favorite)
+    /**
+     * Delete a favorite item.
+     */
+    public function destroy(Request $request, FavoriteItem $favorite): JsonResponse
     {
-        $favorite->delete();
+        // Verify user is member of household
+        abort_unless(
+            $request->user()->households->contains($favorite->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        $this->favoriteItemService->deleteFavorite($favorite);
 
         return response()->json([
-            'message' => 'Favorite deleted successfully',
+            'message' => 'Favorite deleted successfully.',
         ]);
     }
 }
