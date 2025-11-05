@@ -127,7 +127,12 @@ class ShoppingListService
             ]);
         });
 
-        return $shoppingList->fresh(['currentlyShoppingBy']);
+        return $shoppingList->fresh([
+            'items.claimedBy',
+            'items.boughtBy',
+            'currentlyShoppingBy',
+            'user'
+        ]);
     }
 
     /**
@@ -147,7 +152,12 @@ class ShoppingListService
             ]);
         });
 
-        return $shoppingList->fresh();
+        return $shoppingList->fresh([
+            'items.claimedBy',
+            'items.boughtBy',
+            'currentlyShoppingBy',
+            'user'
+        ]);
     }
 
     /**

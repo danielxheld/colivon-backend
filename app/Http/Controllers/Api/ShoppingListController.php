@@ -328,20 +328,23 @@ class ShoppingListController extends Controller
             'personal_cost_total' => $completedItems->where('shared_cost', false)->sum('actual_price'),
         ];
 
-        // Group by buyer
-        $byPerson = $completedItems->groupBy('bought_by_id')->map(function ($items, $userId) {
-            $user = $items->first()->boughtBy;
-            return [
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                ],
-                'total_spent' => $items->sum('actual_price'),
-                'shared_items_total' => $items->where('shared_cost', true)->sum('actual_price'),
-                'personal_items_total' => $items->where('shared_cost', false)->sum('actual_price'),
-                'items_count' => $items->count(),
-            ];
-        })->values();
+        // Group by buyer (only items with a buyer)
+        $byPerson = $completedItems
+            ->filter(fn($item) => $item->bought_by_id !== null)
+            ->groupBy('bought_by_id')
+            ->map(function ($items, $userId) {
+                $user = $items->first()->boughtBy;
+                return [
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                    ],
+                    'total_spent' => $items->sum('actual_price'),
+                    'shared_items_total' => $items->where('shared_cost', true)->sum('actual_price'),
+                    'personal_items_total' => $items->where('shared_cost', false)->sum('actual_price'),
+                    'items_count' => $items->count(),
+                ];
+            })->values();
 
         $expenses['by_person'] = $byPerson;
 
