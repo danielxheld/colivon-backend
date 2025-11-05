@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\UserChorePreference;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -246,7 +247,7 @@ class ChoreAssignmentService
     /**
      * Run roulette for all auto/roulette chores in a household.
      */
-    public function runWeeklyRoulette(Household $household): Collection
+    public function runWeeklyRoulette(Household $household): SupportCollection
     {
         $chores = $household->chores()
             ->where('is_active', true)
