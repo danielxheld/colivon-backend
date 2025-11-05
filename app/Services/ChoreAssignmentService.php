@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Storage;
 class ChoreAssignmentService
 {
     public function __construct(
-        protected GamificationService $gamificationService
+        protected GamificationService $gamificationService,
+        protected AwardService $awardService
     ) {
     }
 
@@ -98,6 +99,9 @@ class ChoreAssignmentService
                 $assignment->chore->household_id,
                 $xpEarned
             );
+
+            // Check and grant awards
+            $this->awardService->checkAndGrantAwards($completedBy, $assignment->chore->household_id);
 
             // Create next assignment if recurring
             if ($assignment->chore->recurrence_type !== 'once') {

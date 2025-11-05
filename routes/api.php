@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AwardController;
 use App\Http\Controllers\Api\ChoreAssignmentController;
 use App\Http\Controllers\Api\ChoreController;
 use App\Http\Controllers\Api\FavoriteItemController;
@@ -69,4 +70,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/gamification/my-stats', [GamificationController::class, 'myStats']);
     Route::get('/gamification/leaderboard/monthly', [GamificationController::class, 'monthlyLeaderboard']);
     Route::get('/gamification/leaderboard/all-time', [GamificationController::class, 'allTimeLeaderboard']);
+
+    // Award routes
+    Route::get('/awards', [AwardController::class, 'index']);
+    Route::get('/awards/my', [AwardController::class, 'userAwards']);
+    Route::post('/awards/check', [AwardController::class, 'checkAwards']);
 });
