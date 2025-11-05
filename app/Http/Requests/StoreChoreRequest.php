@@ -26,6 +26,7 @@ class StoreChoreRequest extends FormRequest
             'household_id' => 'required|exists:households,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'category' => 'nullable|string|max:50',
             'recurrence_type' => 'required|in:daily,weekly,biweekly,monthly,custom,once',
             'recurrence_interval' => 'required_if:recurrence_type,custom|nullable|integer|min:1',
             'difficulty_points' => 'nullable|integer|min:1|max:5',

@@ -26,6 +26,7 @@ class UpdateChoreRequest extends FormRequest
         return [
             'title' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
+            'category' => 'nullable|string|max:50',
             'recurrence_type' => 'sometimes|in:daily,weekly,biweekly,monthly,custom,once',
             'recurrence_interval' => 'required_if:recurrence_type,custom|nullable|integer|min:1',
             'difficulty_points' => 'nullable|integer|min:1|max:5',

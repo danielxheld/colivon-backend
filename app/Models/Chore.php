@@ -16,6 +16,7 @@ class Chore extends Model
         'created_by',
         'title',
         'description',
+        'category',
         'recurrence_type',
         'recurrence_interval',
         'difficulty_points',

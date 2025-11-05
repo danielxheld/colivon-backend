@@ -90,4 +90,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(GamificationStat::class);
     }
+
+    public function userAwards(): HasMany
+    {
+        return $this->hasMany(UserAward::class);
+    }
 }
