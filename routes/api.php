@@ -54,6 +54,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // WG Features - Expenses
     Route::get('/shopping-lists/{shoppingList}/expenses', [ShoppingListController::class, 'getExpenses']);
 
+    // Templates
+    Route::get('/shopping-list-templates', [ShoppingListController::class, 'getTemplates']);
+    Route::post('/shopping-lists/{shoppingList}/create-from-template', [ShoppingListController::class, 'createFromTemplate']);
+
+    // Recurring Items
+    Route::post('/shopping-lists/reactivate-recurring', [ShoppingListController::class, 'reactivateRecurringItems']);
+
     // Favorite Items routes
     Route::get('/favorite-items', [FavoriteItemController::class, 'index']);
     Route::post('/favorite-items', [FavoriteItemController::class, 'store']);

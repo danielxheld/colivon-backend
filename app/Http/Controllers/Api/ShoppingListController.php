@@ -366,4 +366,70 @@ class ShoppingListController extends Controller
 
         return response()->json($expenses);
     }
+
+    /**
+     * Get all template lists for a household.
+     */
+    public function getTemplates(Request $request): AnonymousResourceCollection
+    {
+        $request->validate([
+            'household_id' => 'required|exists:households,id',
+        ]);
+
+        abort_unless(
+            $request->user()->households->contains($request->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        $templates = $this->shoppingListService->getTemplates($request->household_id);
+
+        return ShoppingListResource::collection($templates);
+    }
+
+    /**
+     * Create a new shopping list from a template.
+     */
+    public function createFromTemplate(Request $request, ShoppingList $template): JsonResponse
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+        ]);
+
+        abort_unless(
+            $request->user()->households->contains($template->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        abort_unless(
+            $template->is_template,
+            400,
+            'This list is not a template.'
+        );
+
+        $list = $this->shoppingListService->createFromTemplate(
+            $template,
+            $request->user(),
+            $request->name
+        );
+
+        return response()->json([
+            'shopping_list' => new ShoppingListResource($list),
+            'message' => 'Shopping list created from template.',
+        ], 201);
+    }
+
+    /**
+     * Reactivate overdue recurring items for a household.
+     */
+    public function reactivateRecurringItems(Request $request): JsonResponse
+    {
+        $count = $this->shoppingListService->reactivateRecurringItems();
+
+        return response()->json([
+            'message' => "Reactivated {$count} recurring items.",
+            'count' => $count,
+        ]);
+    }
 }

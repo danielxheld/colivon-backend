@@ -274,4 +274,53 @@ class ShoppingListService
 
         return $count;
     }
+
+    /**
+     * Get all template lists for a household.
+     */
+    public function getTemplates(int $householdId): Collection
+    {
+        return ShoppingList::with(['items'])
+            ->where('household_id', $householdId)
+            ->where('is_template', true)
+            ->latest()
+            ->get();
+    }
+
+    /**
+     * Create a new shopping list from a template.
+     */
+    public function createFromTemplate(ShoppingList $template, User $user, string $name): ShoppingList
+    {
+        return DB::transaction(function () use ($template, $user, $name) {
+            // Create new list from template
+            $newList = $user->shoppingLists()->create([
+                'household_id' => $template->household_id,
+                'name' => $name,
+                'is_public' => $template->is_public,
+                'store' => $template->store,
+                'is_template' => false,
+                'estimated_total' => $template->estimated_total,
+            ]);
+
+            // Copy all items from template
+            foreach ($template->items as $templateItem) {
+                $newList->items()->create([
+                    'name' => $templateItem->name,
+                    'quantity' => $templateItem->quantity,
+                    'unit' => $templateItem->unit,
+                    'category' => $templateItem->category,
+                    'note' => $templateItem->note,
+                    'notes_for_shopper' => $templateItem->notes_for_shopper,
+                    'price' => $templateItem->price,
+                    'aisle_order' => $templateItem->aisle_order,
+                    'is_recurring' => $templateItem->is_recurring,
+                    'recurrence_interval' => $templateItem->recurrence_interval,
+                    'shared_cost' => $templateItem->shared_cost,
+                ]);
+            }
+
+            return $newList->fresh(['items', 'user']);
+        });
+    }
 }
