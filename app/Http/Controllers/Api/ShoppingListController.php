@@ -21,7 +21,6 @@ class ShoppingListController extends Controller
     public function __construct(
         protected ShoppingListService $shoppingListService
     ) {
-        $this->authorizeResource(ShoppingList::class);
     }
 
     /**
@@ -95,8 +94,15 @@ class ShoppingListController extends Controller
     /**
      * Delete a shopping list.
      */
-    public function destroy(ShoppingList $shoppingList): JsonResponse
+    public function destroy(Request $request, ShoppingList $shoppingList): JsonResponse
     {
+        // Only owner can delete
+        abort_unless(
+            $shoppingList->user_id === $request->user()->id,
+            403,
+            'Only the owner can delete this list.'
+        );
+
         $this->shoppingListService->deleteList($shoppingList);
 
         return response()->json([
@@ -125,8 +131,6 @@ class ShoppingListController extends Controller
      */
     public function updateItem(UpdateShoppingListItemRequest $request, ShoppingListItem $item): JsonResponse
     {
-        $this->authorize('update', $item);
-
         $item = $this->shoppingListService->updateItem(
             $item,
             $request->validated()
@@ -143,7 +147,18 @@ class ShoppingListController extends Controller
      */
     public function toggleItemComplete(Request $request, ShoppingListItem $item): JsonResponse
     {
-        $this->authorize('toggleComplete', $item);
+        $shoppingList = $item->shoppingList;
+
+        // Check if user can access this list
+        abort_unless(
+            $request->user()->households->contains($shoppingList->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        if (!$shoppingList->is_public && $shoppingList->user_id !== $request->user()->id) {
+            abort(403, 'Cannot update items in private list.');
+        }
 
         $item = $this->shoppingListService->toggleItemComplete($item);
 
@@ -158,7 +173,18 @@ class ShoppingListController extends Controller
      */
     public function deleteItem(Request $request, ShoppingListItem $item): JsonResponse
     {
-        $this->authorize('delete', $item);
+        $shoppingList = $item->shoppingList;
+
+        // Check if user can access this list
+        abort_unless(
+            $request->user()->households->contains($shoppingList->household_id),
+            403,
+            'Unauthorized.'
+        );
+
+        if (!$shoppingList->is_public && $shoppingList->user_id !== $request->user()->id) {
+            abort(403, 'Cannot delete items from private list.');
+        }
 
         $this->shoppingListService->deleteItem($item);
 
@@ -172,7 +198,12 @@ class ShoppingListController extends Controller
      */
     public function startShopping(Request $request, ShoppingList $shoppingList): JsonResponse
     {
-        $this->authorize('startShopping', $shoppingList);
+        // Check if user can access this list
+        abort_unless(
+            $request->user()->households->contains($shoppingList->household_id),
+            403,
+            'Unauthorized.'
+        );
 
         $list = $this->shoppingListService->startShopping($shoppingList, $request->user());
 
@@ -187,7 +218,12 @@ class ShoppingListController extends Controller
      */
     public function stopShopping(Request $request, ShoppingList $shoppingList): JsonResponse
     {
-        $this->authorize('startShopping', $shoppingList);
+        // Check if user can access this list
+        abort_unless(
+            $request->user()->households->contains($shoppingList->household_id),
+            403,
+            'Unauthorized.'
+        );
 
         $list = $this->shoppingListService->stopShopping($shoppingList);
 

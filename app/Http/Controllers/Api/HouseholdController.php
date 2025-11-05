@@ -18,7 +18,6 @@ class HouseholdController extends Controller
     public function __construct(
         protected HouseholdService $householdService
     ) {
-        $this->authorizeResource(Household::class);
     }
 
     /**
@@ -50,8 +49,15 @@ class HouseholdController extends Controller
     /**
      * Get a single household.
      */
-    public function show(Household $household): HouseholdResource
+    public function show(Request $request, Household $household): HouseholdResource
     {
+        // Check if user is member
+        abort_unless(
+            $request->user()->households->contains($household),
+            403,
+            'You are not a member of this household.'
+        );
+
         return new HouseholdResource($household->load(['owner', 'users']));
     }
 
