@@ -12,6 +12,11 @@ class ShoppingListItem extends Model
         'name',
         'quantity',
         'unit',
+        'category',
+        'note',
+        'price',
+        'aisle_order',
+        'image_url',
         'is_completed',
         'is_recurring',
         'recurrence_interval',
@@ -22,6 +27,8 @@ class ShoppingListItem extends Model
         'is_completed' => 'boolean',
         'is_recurring' => 'boolean',
         'completed_at' => 'datetime',
+        'price' => 'decimal:2',
+        'aisle_order' => 'integer',
     ];
 
     public function shoppingList(): BelongsTo

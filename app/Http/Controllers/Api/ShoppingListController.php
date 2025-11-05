@@ -105,12 +105,14 @@ class ShoppingListController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'is_public' => 'boolean',
+            'store' => 'nullable|string|max:100',
+            'is_template' => 'boolean',
+            'template_name' => 'nullable|string|max:255',
+            'estimated_total' => 'nullable|numeric|min:0',
+            'actual_total' => 'nullable|numeric|min:0',
         ]);
 
-        $shoppingList->update([
-            'name' => $request->name,
-            'is_public' => $request->is_public ?? $shoppingList->is_public,
-        ]);
+        $shoppingList->update($request->only(['name', 'is_public', 'store', 'is_template', 'template_name', 'estimated_total', 'actual_total']));
 
         return response()->json([
             'shopping_list' => $shoppingList->load('items', 'user'),
@@ -154,6 +156,10 @@ class ShoppingListController extends Controller
             'name' => 'required|string|max:255',
             'quantity' => 'nullable|string|max:50',
             'unit' => 'nullable|string|max:50',
+            'category' => 'nullable|string|max:100',
+            'note' => 'nullable|string',
+            'price' => 'nullable|numeric|min:0',
+            'aisle_order' => 'nullable|integer|min:0',
             'is_recurring' => 'boolean',
             'recurrence_interval' => 'nullable|in:daily,weekly,monthly',
         ]);
@@ -162,6 +168,10 @@ class ShoppingListController extends Controller
             'name' => $request->name,
             'quantity' => $request->quantity,
             'unit' => $request->unit,
+            'category' => $request->category,
+            'note' => $request->note,
+            'price' => $request->price,
+            'aisle_order' => $request->aisle_order,
             'is_recurring' => $request->is_recurring ?? false,
             'recurrence_interval' => $request->recurrence_interval,
         ]);
@@ -193,11 +203,15 @@ class ShoppingListController extends Controller
             'name' => 'string|max:255',
             'quantity' => 'nullable|string|max:50',
             'unit' => 'nullable|string|max:50',
+            'category' => 'nullable|string|max:100',
+            'note' => 'nullable|string',
+            'price' => 'nullable|numeric|min:0',
+            'aisle_order' => 'nullable|integer|min:0',
             'is_recurring' => 'boolean',
             'recurrence_interval' => 'nullable|in:daily,weekly,monthly',
         ]);
 
-        $item->update($request->only(['name', 'quantity', 'unit', 'is_recurring', 'recurrence_interval']));
+        $item->update($request->only(['name', 'quantity', 'unit', 'category', 'note', 'price', 'aisle_order', 'is_recurring', 'recurrence_interval']));
 
         return response()->json([
             'item' => $item,
@@ -263,6 +277,46 @@ class ShoppingListController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function startShopping(Request $request, ShoppingList $shoppingList)
+    {
+        // Check if user can access this list
+        if (!$request->user()->households->contains($shoppingList->household_id)) {
+            return response()->json([
+                'message' => 'Unauthorized',
+            ], 403);
+        }
+
+        $shoppingList->update([
+            'currently_shopping_by_id' => $request->user()->id,
+            'last_sync' => now(),
+        ]);
+
+        return response()->json([
+            'shopping_list' => $shoppingList->load('currentlyShoppingBy'),
+            'message' => 'Shopping started',
+        ]);
+    }
+
+    public function stopShopping(Request $request, ShoppingList $shoppingList)
+    {
+        // Check if user can access this list
+        if (!$request->user()->households->contains($shoppingList->household_id)) {
+            return response()->json([
+                'message' => 'Unauthorized',
+            ], 403);
+        }
+
+        $shoppingList->update([
+            'currently_shopping_by_id' => null,
+            'last_sync' => now(),
+        ]);
+
+        return response()->json([
+            'shopping_list' => $shoppingList,
+            'message' => 'Shopping stopped',
+        ]);
     }
 
     public function deleteItem(Request $request, ShoppingListItem $item)

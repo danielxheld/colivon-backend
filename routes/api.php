@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\FavoriteItemController;
 use App\Http\Controllers\Api\HouseholdController;
 use App\Http\Controllers\Api\ShoppingListController;
 use Illuminate\Http\Request;
@@ -36,4 +37,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/shopping-list-items/{item}', [ShoppingListController::class, 'updateItem']);
     Route::post('/shopping-list-items/{item}/toggle', [ShoppingListController::class, 'toggleItemComplete']);
     Route::delete('/shopping-list-items/{item}', [ShoppingListController::class, 'deleteItem']);
+
+    // Shopping Mode routes
+    Route::post('/shopping-lists/{shoppingList}/start-shopping', [ShoppingListController::class, 'startShopping']);
+    Route::post('/shopping-lists/{shoppingList}/stop-shopping', [ShoppingListController::class, 'stopShopping']);
+
+    // Favorite Items routes
+    Route::get('/favorite-items', [FavoriteItemController::class, 'index']);
+    Route::post('/favorite-items', [FavoriteItemController::class, 'store']);
+    Route::delete('/favorite-items/{favorite}', [FavoriteItemController::class, 'destroy']);
 });

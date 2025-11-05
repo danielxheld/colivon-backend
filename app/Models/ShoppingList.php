@@ -13,10 +13,21 @@ class ShoppingList extends Model
         'user_id',
         'name',
         'is_public',
+        'store',
+        'currently_shopping_by_id',
+        'is_template',
+        'template_name',
+        'estimated_total',
+        'actual_total',
+        'last_sync',
     ];
 
     protected $casts = [
         'is_public' => 'boolean',
+        'is_template' => 'boolean',
+        'estimated_total' => 'decimal:2',
+        'actual_total' => 'decimal:2',
+        'last_sync' => 'datetime',
     ];
 
     public function household(): BelongsTo
@@ -27,6 +38,11 @@ class ShoppingList extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function currentlyShoppingBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'currently_shopping_by_id');
     }
 
     public function items(): HasMany
